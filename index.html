@@ -373,8 +373,9 @@
         .section-content h4 { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px; }
         .section-content p { font-size: 0.875rem; line-height: 1.7; }
         .section-upload { margin-top: 16px; }
-        .section-upload-zone { border: 2px dashed var(--border-default); border-radius: var(--radius-md); padding: 20px; text-align: center; cursor: pointer; transition: all var(--transition-base); min-height: 80px; }
+        .section-upload-zone { border: 2px dashed var(--border-default); border-radius: var(--radius-md); padding: 20px; text-align: center; cursor: pointer; transition: all var(--transition-base); min-height: 80px; outline: none; }
         .section-upload-zone:hover { border-color: var(--accent-gemini); background: rgba(139, 92, 246, 0.05); }
+        .section-upload-zone:focus { border-color: var(--accent-gemini); background: rgba(139, 92, 246, 0.08); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2); }
         .section-upload-zone.dragover { border-color: var(--accent-gemini); background: rgba(139, 92, 246, 0.1); }
         .section-upload-zone.has-images { border-style: solid; border-color: var(--accent-success); padding: 10px; }
         .section-preview { max-width: 100%; max-height: 150px; border-radius: var(--radius-sm); }
@@ -425,7 +426,16 @@
         .regen-model-btn { display: block; padding: 8px 10px; background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 0.7rem; text-align: center; transition: all var(--transition-fast); }
         .regen-model-option input:checked + .regen-model-btn { border-color: var(--accent-gemini); background: rgba(139, 92, 246, 0.15); color: var(--accent-gemini); font-weight: 600; }
         .regen-model-option:hover .regen-model-btn { border-color: var(--border-strong); }
-        
+
+        /* STEP 3 화면비율 선택 */
+        .regen-ratio-section { margin-bottom: 12px; }
+        .regen-ratio-options { display: flex; gap: 6px; flex-wrap: wrap; }
+        .regen-ratio-option { cursor: pointer; }
+        .regen-ratio-option input { display: none; }
+        .regen-ratio-btn { display: block; padding: 6px 12px; background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 0.75rem; text-align: center; transition: all var(--transition-fast); }
+        .regen-ratio-option input:checked + .regen-ratio-btn { border-color: var(--accent-gemini); background: rgba(139, 92, 246, 0.15); color: var(--accent-gemini); font-weight: 600; }
+        .regen-ratio-option:hover .regen-ratio-btn { border-color: var(--border-strong); }
+
         /* STEP 3 포함 요소 체크박스 */
         .regen-include-section { margin-bottom: 12px; }
         .regen-include-options { display: flex; flex-direction: column; gap: 6px; }
@@ -1421,13 +1431,14 @@
             }
         };
         
-        // 동적으로 aspectRatio 포함한 config 반환
-        function getModelConfigWithRatio(baseConfig) {
+        // 동적으로 aspectRatio 포함한 config 반환 (customRatio가 있으면 사용)
+        function getModelConfigWithRatio(baseConfig, customRatio = null) {
             const config = { ...baseConfig };
+            const ratio = customRatio || selectedAspectRatio;
             if (config.imageConfig) {
-                config.imageConfig = { ...config.imageConfig, aspectRatio: selectedAspectRatio };
+                config.imageConfig = { ...config.imageConfig, aspectRatio: ratio };
             } else {
-                config.imageConfig = { aspectRatio: selectedAspectRatio };
+                config.imageConfig = { aspectRatio: ratio };
             }
             return config;
         }
@@ -2556,9 +2567,9 @@ CTA문구: 자세히 보기
                         </div>
                         <div class="section-upload">
                             <label style="font-size: 0.8rem; font-weight: 500; display: block; margin-bottom: 8px;">🖼️ 섹션 전용 레퍼런스 (최대 5장) - 스타일 참고용</label>
-                            <div class="section-upload-zone" id="sectionRefZone${i}" data-section="${i}">
+                            <div class="section-upload-zone" id="sectionRefZone${i}" data-section="${i}" tabindex="0">
                                 <span style="font-size: 1.5rem;">➕</span>
-                                <p style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 8px;">클릭하거나 드래그하여 이미지 추가</p>
+                                <p style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 8px;">클릭 후 Ctrl+V 또는 더블클릭으로 파일 선택</p>
                             </div>
                             <input type="file" hidden id="sectionRefInput${i}" accept="image/*" multiple>
                             <div class="section-preview-container" id="sectionRefPreview${i}"></div>
@@ -2927,35 +2938,63 @@ CTA문구: 자세히 보기
             const zone = document.getElementById(`sectionRefZone${index}`);
             const input = document.getElementById(`sectionRefInput${index}`);
             const preview = document.getElementById(`sectionRefPreview${index}`);
-            
+
             if (!sectionReferences[index]) {
                 sectionReferences[index] = [];
             }
 
+            // 클릭 시 포커스만 (파일 선택 안 열림)
             zone.onclick = (e) => {
+                if (e.target.closest('.remove-btn')) return;
+                zone.focus();
+            };
+
+            // 더블클릭 시 파일 선택 열기
+            zone.ondblclick = (e) => {
                 if (e.target.closest('.remove-btn')) return;
                 input.click();
             };
-            
+
+            // 붙여넣기 (Ctrl+V) 처리
+            zone.onpaste = (e) => {
+                e.preventDefault();
+                const items = e.clipboardData?.items;
+                if (!items) return;
+
+                const imageFiles = [];
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.startsWith('image/')) {
+                        const file = items[i].getAsFile();
+                        if (file) imageFiles.push(file);
+                    }
+                }
+
+                if (imageFiles.length > 0) {
+                    handleSectionFiles(imageFiles, index);
+                } else {
+                    showToast('클립보드에 이미지가 없습니다.', 'error');
+                }
+            };
+
             zone.ondragover = e => {
                 e.preventDefault();
                 e.stopPropagation();
                 zone.classList.add('dragover');
             };
-            
+
             zone.ondragleave = e => {
                 e.preventDefault();
                 e.stopPropagation();
                 zone.classList.remove('dragover');
             };
-            
+
             zone.ondrop = e => {
                 e.preventDefault();
                 e.stopPropagation();
                 zone.classList.remove('dragover');
                 handleSectionFiles(e.dataTransfer.files, index);
             };
-            
+
             input.onchange = () => {
                 handleSectionFiles(input.files, index);
                 input.value = '';
@@ -3536,7 +3575,34 @@ IMPORTANT: These global requirements override default styles.`;
                                         </label>
                                     </div>
                                 </div>
-                                
+
+                                <!-- 화면비율 선택 -->
+                                <div class="regen-ratio-section">
+                                    <label class="regen-label">📐 화면비율</label>
+                                    <div class="regen-ratio-options">
+                                        <label class="regen-ratio-option">
+                                            <input type="radio" name="regenRatio${i}" value="1:1" ${(step3Ratios[i] || selectedAspectRatio) === '1:1' ? 'checked' : ''} onchange="setStep3Ratio(${i}, '1:1')">
+                                            <span class="regen-ratio-btn">1:1</span>
+                                        </label>
+                                        <label class="regen-ratio-option">
+                                            <input type="radio" name="regenRatio${i}" value="3:4" ${(step3Ratios[i] || selectedAspectRatio) === '3:4' ? 'checked' : ''} onchange="setStep3Ratio(${i}, '3:4')">
+                                            <span class="regen-ratio-btn">3:4</span>
+                                        </label>
+                                        <label class="regen-ratio-option">
+                                            <input type="radio" name="regenRatio${i}" value="4:3" ${(step3Ratios[i] || selectedAspectRatio) === '4:3' ? 'checked' : ''} onchange="setStep3Ratio(${i}, '4:3')">
+                                            <span class="regen-ratio-btn">4:3</span>
+                                        </label>
+                                        <label class="regen-ratio-option">
+                                            <input type="radio" name="regenRatio${i}" value="9:16" ${(step3Ratios[i] || selectedAspectRatio) === '9:16' ? 'checked' : ''} onchange="setStep3Ratio(${i}, '9:16')">
+                                            <span class="regen-ratio-btn">9:16</span>
+                                        </label>
+                                        <label class="regen-ratio-option">
+                                            <input type="radio" name="regenRatio${i}" value="16:9" ${(step3Ratios[i] || selectedAspectRatio) === '16:9' ? 'checked' : ''} onchange="setStep3Ratio(${i}, '16:9')">
+                                            <span class="regen-ratio-btn">16:9</span>
+                                        </label>
+                                    </div>
+                                </div>
+
                                 <!-- 재생성 포함 요소 체크박스 -->
                                 <div class="regen-include-section">
                                     <label class="regen-label">🎯 재생성에 포함할 요소</label>
@@ -3609,10 +3675,21 @@ IMPORTANT: These global requirements override default styles.`;
         function setStep3Model(index, model) {
             step3Models[index] = model;
         }
-        
+
         function getStep3ModelConfig(index) {
             const model = step3Models[index] || selectedModel;
             return MODEL_CONFIGS[model] || MODEL_CONFIGS.fast;
+        }
+
+        // Step 3 섹션별 화면비율
+        let step3Ratios = {};
+
+        function setStep3Ratio(index, ratio) {
+            step3Ratios[index] = ratio;
+        }
+
+        function getStep3Ratio(index) {
+            return step3Ratios[index] || selectedAspectRatio;
         }
         
         function toggleRegenPanel(index) {
@@ -3984,16 +4061,17 @@ ${step3Prompt}`;
 
             // 모델 설정 가져오기 (섹션별 설정 우선)
             const modelConfig = getStep3ModelConfig(index);
+            const sectionRatio = getStep3Ratio(index);
 
-            const geminiUrl = useBackend 
+            const geminiUrl = useBackend
                 ? `${BACKEND_URL}/api/gemini`
                 : `https://generativelanguage.googleapis.com/v1beta/models/${modelConfig.model}:generateContent?key=${geminiApiKey}`;
-            
+
             const reqBody = {
                 contents: [{ parts }],
                 generationConfig: {
                     responseModalities: ['TEXT', 'IMAGE'],
-                    ...getModelConfigWithRatio(modelConfig.config)
+                    ...getModelConfigWithRatio(modelConfig.config, sectionRatio)
                 }
             };
             if (useBackend) reqBody.model = modelConfig.model;
