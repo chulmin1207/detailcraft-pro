@@ -7,7 +7,7 @@ export const AUTH_USER_KEY = 'detailcraft_auth_user';
 export const MODEL_CONFIGS = {
     fast: {
         name: '⚡ 빠른 생성 (권장)',
-        model: 'gemini-2.5-flash-image',
+        model: 'gemini-3.1-flash-image-preview',
         timeout: 60000, // 60초
         config: {},
         description: '10~30초, 1K 해상도'

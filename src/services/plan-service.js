@@ -446,7 +446,7 @@ JSON만 출력하고 다른 설명은 하지 마세요.` }
 
     const url = useBackend
         ? `${backendUrl}/api/gemini`
-        : `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
+        : `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
 
     const reqBody = {
         contents: [{ parts }],
@@ -456,7 +456,7 @@ JSON만 출력하고 다른 설명은 하지 마세요.` }
         }
     };
 
-    if (useBackend) reqBody.model = 'gemini-2.0-flash';
+    if (useBackend) reqBody.model = 'gemini-2.5-flash';
 
     const response = await fetchWithTimeout(url, {
         method: 'POST',
