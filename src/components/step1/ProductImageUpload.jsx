@@ -28,7 +28,7 @@ export default function ProductImageUpload() {
   return (
     <div className="bg-bg-secondary border border-border-subtle rounded-[24px] overflow-hidden mb-6">
       {/* 카드 헤더 */}
-      <div className="p-[18px_24px] border-b border-border-subtle flex justify-between items-center">
+      <div className="px-6 py-[18px] border-b border-border-subtle flex justify-between items-center">
         <h2 className="text-base font-semibold flex items-center gap-2.5">
           <span>🖼️</span> 제품 이미지 업로드
         </h2>

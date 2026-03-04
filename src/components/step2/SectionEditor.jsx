@@ -166,7 +166,7 @@ export default function SectionEditor({ section, index }) {
         <div
           onClick={() => setExpanded(!expanded)}
           className="
-            p-[14px_18px] bg-bg-elevated flex justify-between items-center cursor-pointer
+            px-[18px] py-[14px] bg-bg-elevated flex justify-between items-center cursor-pointer
             hover:bg-bg-hover transition-colors duration-150
           "
         >

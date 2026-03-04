@@ -47,7 +47,7 @@ export default function Header({ onOpenApiSettings }) {
         </div>
         {/* logo-title */}
         <span
-          className="font-display text-2xl font-semibold"
+          className="font-display text-[1.5rem] font-semibold"
           style={{
             background: 'var(--gradient-primary)',
             WebkitBackgroundClip: 'text',
