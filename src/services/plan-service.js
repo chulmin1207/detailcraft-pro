@@ -347,19 +347,34 @@ export async function callClaudeForPlan(prompt, config) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullText = '';
+        let buffer = '';
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
             const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
+            buffer += chunk;
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
             for (const line of lines) {
                 if (!line.startsWith('data: ')) continue;
                 const jsonStr = line.slice(6).trim();
                 if (jsonStr === '[DONE]' || !jsonStr) continue;
 
+                try {
+                    const event = JSON.parse(jsonStr);
+                    if (event.type === 'content_block_delta' && event.delta?.text) {
+                        fullText += event.delta.text;
+                    }
+                } catch {}
+            }
+        }
+
+        if (buffer.startsWith('data: ')) {
+            const jsonStr = buffer.slice(6).trim();
+            if (jsonStr && jsonStr !== '[DONE]') {
                 try {
                     const event = JSON.parse(jsonStr);
                     if (event.type === 'content_block_delta' && event.delta?.text) {
