@@ -1,0 +1,192 @@
+import { useState, useCallback } from 'react';
+import { useApp } from '../../contexts/AppContext';
+import { useToast } from '../../contexts/ToastContext';
+import { analyzeProductImages, buildPlanPrompt, callGeminiForPlan, parseSections } from '../../services/plan-service';
+import { BACKEND_URL } from '../../config/constants';
+import ProductForm from './ProductForm';
+import ProductImageUpload from './ProductImageUpload';
+
+export default function Step1() {
+  const {
+    productName,
+    category,
+    priceRange,
+    targetAudience,
+    productFeatures,
+    additionalNotes,
+    uploadedImages,
+    useBackend,
+    geminiApiKey,
+    setGeneratedPlan,
+    setGeneratedSections,
+    goToStep,
+  } = useApp();
+
+  const { showToast } = useToast();
+
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [showProgress, setShowProgress] = useState(false);
+
+  // 프로그레스 애니메이션 헬퍼
+  const animateProgress = useCallback(async (target) => {
+    setProgress(target);
+    // CSS transition으로 시각적 애니메이션 처리, 약간의 대기
+    await new Promise((r) => setTimeout(r, 300));
+  }, []);
+
+  // 기획서 생성 핸들러
+  const handleGenerate = useCallback(async () => {
+    // 1. 유효성 검사
+    if (!productName.trim()) {
+      showToast('제품명을 입력해주세요.', 'error');
+      return;
+    }
+
+    setLoading(true);
+    setShowProgress(true);
+    setProgress(0);
+
+    try {
+      // 폼 데이터 수집
+      const data = {
+        productName: productName.trim(),
+        category: category || 'snack',
+        priceRange: priceRange || '미정',
+        targetAudience: targetAudience || '일반 소비자',
+        productFeatures: productFeatures || '',
+        additionalNotes: additionalNotes || '',
+      };
+
+      await animateProgress(10);
+
+      // 2. 이미지 분석 단계
+      let imageAnalysis = null;
+      const hasImages = uploadedImages.product.length > 0 || uploadedImages.package.length > 0;
+
+      if (hasImages) {
+        showToast('🔍 제품 이미지 분석 중...', 'success');
+        try {
+          const config = {
+            useBackend,
+            backendUrl: BACKEND_URL,
+            geminiApiKey,
+          };
+          imageAnalysis = await analyzeProductImages(uploadedImages, config);
+          await animateProgress(40);
+        } catch (err) {
+          console.warn('이미지 분석 실패, 기본 기획으로 진행:', err);
+          await animateProgress(30);
+        }
+      } else {
+        await animateProgress(30);
+      }
+
+      // 3. 프롬프트 빌드
+      const prompt = buildPlanPrompt(data, imageAnalysis);
+
+      // 4. Gemini API 호출
+      const config = {
+        useBackend,
+        backendUrl: BACKEND_URL,
+        geminiApiKey,
+      };
+      const response = await callGeminiForPlan(prompt, config);
+
+      await animateProgress(100);
+
+      // 5. 섹션 파싱
+      const sections = parseSections(response);
+
+      // 6. 상태 업데이트
+      setGeneratedPlan(response);
+      setGeneratedSections(sections);
+
+      showToast('기획서 생성 완료!', 'success');
+
+      // 7. Step 2로 이동
+      setTimeout(() => {
+        goToStep(2);
+      }, 500);
+
+    } catch (error) {
+      console.error('Error:', error);
+      showToast(error.message || '기획서 생성 실패', 'error');
+    } finally {
+      setLoading(false);
+      setShowProgress(false);
+      setProgress(0);
+    }
+  }, [
+    productName, category, priceRange, targetAudience,
+    productFeatures, additionalNotes, uploadedImages,
+    useBackend, geminiApiKey, animateProgress, showToast,
+    setGeneratedPlan, setGeneratedSections, goToStep,
+  ]);
+
+  return (
+    <section>
+      {/* 제품 정보 입력 카드 */}
+      <ProductForm />
+
+      {/* 제품 이미지 업로드 카드 */}
+      <ProductImageUpload />
+
+      {/* 생성 버튼 */}
+      <div className="text-center mt-6">
+        <button
+          onClick={handleGenerate}
+          disabled={loading}
+          className={`
+            inline-flex items-center gap-3 py-4 px-12
+            border-none rounded-[16px] text-white font-[inherit] text-base font-semibold
+            cursor-pointer transition-all duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]
+            disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
+            ${!loading
+              ? 'hover:-translate-y-0.5 hover:shadow-[0_0_60px_rgba(99,102,241,0.5)]'
+              : ''
+            }
+          `}
+          style={{
+            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%)',
+            boxShadow: '0 0 40px rgba(99, 102, 241, 0.4)',
+          }}
+        >
+          {loading ? (
+            <div
+              className="w-5 h-5 border-2 border-[rgba(255,255,255,0.3)] border-t-white rounded-full animate-spin"
+            />
+          ) : (
+            <span>⚡ 기획서 생성하기</span>
+          )}
+        </button>
+      </div>
+
+      {/* 프로그레스 바 */}
+      {showProgress && (
+        <div
+          className="mt-6 p-6 bg-bg-secondary border border-border-subtle rounded-[24px]"
+          style={{ animation: 'fadeIn 0.3s ease' }}
+        >
+          <div className="flex justify-between mb-3">
+            <span className="font-medium text-[0.9rem]">
+              AI가 기획서를 생성하고 있습니다...
+            </span>
+            <span className="text-accent-primary-hover font-semibold">
+              {progress}%
+            </span>
+          </div>
+          <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-[width] duration-500 ease-out"
+              style={{
+                width: `${progress}%`,
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%)',
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
