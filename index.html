@@ -1432,27 +1432,45 @@
             return config;
         }
 
-        // ===== TIMEOUT FETCH =====
-        async function fetchWithTimeout(url, options, timeout = 60000) {
-            return new Promise(async (resolve, reject) => {
-                const timeoutId = setTimeout(() => {
-                    reject(new Error(`⏱️ 타임아웃: ${timeout/1000}초 초과. 다시 시도해주세요.`));
-                }, timeout);
-                
+        // ===== TIMEOUT FETCH (with retry for 429/503) =====
+        async function fetchWithTimeout(url, options, timeout = 60000, maxRetries = 3) {
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
-                    const response = await fetch(url, options);
-                    clearTimeout(timeoutId);
-                    resolve(response);
-                } catch (error) {
-                    clearTimeout(timeoutId);
-                    console.error('Fetch error details:', error);
-                    if (error.message.includes('Failed to fetch')) {
-                        reject(new Error('CORS/네트워크 오류: 페이지를 새로고침하고 다시 시도해주세요.'));
-                    } else {
-                        reject(new Error(`네트워크 오류: ${error.message}`));
+                    const response = await new Promise(async (resolve, reject) => {
+                        const timeoutId = setTimeout(() => {
+                            reject(new Error(`⏱️ 타임아웃: ${timeout/1000}초 초과. 다시 시도해주세요.`));
+                        }, timeout);
+
+                        try {
+                            const resp = await fetch(url, options);
+                            clearTimeout(timeoutId);
+                            resolve(resp);
+                        } catch (error) {
+                            clearTimeout(timeoutId);
+                            console.error('Fetch error details:', error);
+                            if (error.message.includes('Failed to fetch')) {
+                                reject(new Error('CORS/네트워크 오류: 페이지를 새로고침하고 다시 시도해주세요.'));
+                            } else {
+                                reject(new Error(`네트워크 오류: ${error.message}`));
+                            }
+                        }
+                    });
+
+                    // 429/503 에러 시 재시도 (남은 시도 횟수가 있을 때)
+                    if ((response.status === 429 || response.status === 503) && attempt < maxRetries) {
+                        const waitTime = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
+                        console.warn(`⚠️ ${response.status} 응답. ${waitTime/1000}초 후 재시도... (${attempt + 1}/${maxRetries})`);
+                        showToast(`요청 한도 초과. ${waitTime/1000}초 후 자동 재시도... (${attempt + 1}/${maxRetries})`, 'error');
+                        await sleep(waitTime);
+                        continue;
                     }
+
+                    return response;
+                } catch (error) {
+                    // 네트워크 에러는 재시도하지 않음
+                    throw error;
                 }
-            });
+            }
         }
 
         function getSelectedModelConfig() {
@@ -2596,6 +2614,7 @@ CTA문구: 자세히 보기
         // 섹션별 모델 선택 상태
         let sectionModels = {};
         let sectionGeneratingStatus = {};
+        let isApiRequestInProgress = false; // 동시 요청 방지용 글로벌 락
         
         function setSectionModel(index, model) {
             sectionModels[index] = model;
@@ -2612,16 +2631,23 @@ CTA문구: 자세히 보기
                 showToast('Gemini API 키를 설정해주세요.', 'error');
                 return;
             }
-            
+
+            // 동시 요청 방지
+            if (isApiRequestInProgress) {
+                showToast('다른 이미지 생성이 진행 중입니다. 완료 후 다시 시도해주세요.', 'error');
+                return;
+            }
+
             const section = generatedSections[index];
             const modelConfig = getSectionModelConfig(index);
-            
+
             // 상태 업데이트
+            isApiRequestInProgress = true;
             sectionGeneratingStatus[index] = true;
             renderSectionsEditor();
-            
+
             showToast(`섹션 ${section.number} 생성 중... (${modelConfig.name})`, 'success');
-            
+
             try {
                 const imageData = await generateSectionImageForStep2(section, index, modelConfig);
                 generatedImages[index] = imageData;
@@ -2630,6 +2656,7 @@ CTA문구: 자세히 보기
                 generatedImages[index] = { error: err.message };
                 showToast(`섹션 ${section.number} 실패: ${err.message}`, 'error');
             } finally {
+                isApiRequestInProgress = false;
                 sectionGeneratingStatus[index] = false;
                 renderSectionsEditor();
             }
@@ -3084,9 +3111,9 @@ CTA문구: 자세히 보기
                         renderImagesGrid();
                     }
                     
-                    await sleep(500); // Rate limiting
+                    await sleep(2000); // Rate limiting (2초 간격)
                 }
-                
+
                 renderImagesGrid();
                 showToast('이미지 생성 완료!', 'success');
                 
@@ -3791,13 +3818,20 @@ IMPORTANT: These global requirements override default styles.`;
                 showToast('Gemini API 키를 설정해주세요.', 'error');
                 return;
             }
-            
+
+            // 동시 요청 방지
+            if (isApiRequestInProgress) {
+                showToast('다른 이미지 생성이 진행 중입니다. 완료 후 다시 시도해주세요.', 'error');
+                return;
+            }
+
             // 프롬프트 저장
             step3Prompts[index] = document.getElementById(`step3Prompt${index}`)?.value || '';
-            
+
             const section = generatedSections[index];
+            isApiRequestInProgress = true;
             showToast(`섹션 ${section.number} 재생성 중...`, 'success');
-            
+
             // 카드 상태 업데이트
             const card = document.querySelector(`.image-card[data-index="${index}"]`);
             const statusEl = card?.querySelector('.image-card-status');
@@ -3805,39 +3839,41 @@ IMPORTANT: These global requirements override default styles.`;
                 statusEl.className = 'image-card-status generating';
                 statusEl.textContent = '생성중...';
             }
-            
+
             // 🔄 상단 진행바 상태도 업데이트
             const topStatusEl = document.getElementById(`step3Status${index}`);
             if (topStatusEl) {
                 topStatusEl.className = 'step3-section-status generating';
                 topStatusEl.textContent = `⏳ ${section.number}. ${section.name}`;
             }
-            
+
             try {
                 const imageData = await generateSectionImageWithStep3Options(section, index);
                 generatedImages[index] = imageData;
                 renderImagesGrid();
-                
+
                 // 🔄 상단 진행바 완료 상태
                 if (topStatusEl) {
                     topStatusEl.className = 'step3-section-status done';
                     topStatusEl.textContent = `✓ ${section.number}. ${section.name}`;
                 }
                 updateOverallProgress();
-                
+
                 showToast(`섹션 ${section.number} 재생성 완료!`, 'success');
             } catch (err) {
                 generatedImages[index] = { error: err.message };
                 renderImagesGrid();
-                
+
                 // 🔄 상단 진행바 실패 상태
                 if (topStatusEl) {
                     topStatusEl.className = 'step3-section-status error';
                     topStatusEl.textContent = `✗ ${section.number}. ${section.name}`;
                 }
                 updateOverallProgress();
-                
+
                 showToast(`재생성 실패: ${err.message}`, 'error');
+            } finally {
+                isApiRequestInProgress = false;
             }
         }
         
@@ -4260,9 +4296,9 @@ ${step3Prompt}`;
                     // 이미지 그리드 실시간 업데이트
                     renderImagesGrid();
                     
-                    // Rate limiting
+                    // Rate limiting (2초 간격)
                     if (i < total - 1) {
-                        await sleep(500);
+                        await sleep(2000);
                     }
                 }
                 
