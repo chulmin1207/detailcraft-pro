@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useToast } from '../../contexts/ToastContext';
-import { analyzeProductImages, buildPlanPrompt, callGeminiForPlan, parseSections } from '../../services/plan-service';
+import { analyzeProductImages, buildPlanPrompt, callClaudeForPlan, parseSections } from '../../services/plan-service';
 import { BACKEND_URL } from '../../config/constants';
 import ProductForm from './ProductForm';
 import ProductImageUpload from './ProductImageUpload';
@@ -16,6 +16,7 @@ export default function Step1() {
     additionalNotes,
     uploadedImages,
     useBackend,
+    claudeApiKey,
     geminiApiKey,
     setGeneratedPlan,
     setGeneratedSections,
@@ -85,13 +86,13 @@ export default function Step1() {
       // 3. 프롬프트 빌드
       const prompt = buildPlanPrompt(data, imageAnalysis);
 
-      // 4. Gemini API 호출
-      const config = {
+      // 4. Claude API 호출 (기획서 생성)
+      const planConfig = {
         useBackend,
         backendUrl: BACKEND_URL,
-        geminiApiKey,
+        claudeApiKey,
       };
-      const response = await callGeminiForPlan(prompt, config);
+      const response = await callClaudeForPlan(prompt, planConfig);
 
       await animateProgress(100);
 
@@ -120,7 +121,7 @@ export default function Step1() {
   }, [
     productName, category, priceRange, targetAudience,
     productFeatures, additionalNotes, uploadedImages,
-    useBackend, geminiApiKey, animateProgress, showToast,
+    useBackend, claudeApiKey, geminiApiKey, animateProgress, showToast,
     setGeneratedPlan, setGeneratedSections, goToStep,
   ]);
 

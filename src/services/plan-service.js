@@ -303,37 +303,34 @@ export function parseSections(text) {
     return sections;
 }
 
-// ===== Gemini API 호출 (기획서 생성) =====
-// 원본 함수명: callClaudeAPI (실제로는 Gemini API 호출)
-// config: { useBackend, backendUrl, geminiApiKey, authToken }
-export async function callGeminiForPlan(prompt, config) {
-    const { useBackend, backendUrl, geminiApiKey } = config;
+// ===== Claude API 호출 (기획서 생성) =====
+// config: { useBackend, backendUrl, claudeApiKey }
+export async function callClaudeForPlan(prompt, config) {
+    const { useBackend, backendUrl, claudeApiKey } = config;
 
     const url = useBackend
-        ? `${backendUrl}/api/gemini`
-        : `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
+        ? `${backendUrl}/api/claude`
+        : 'https://api.anthropic.com/v1/messages';
 
     const headers = { 'Content-Type': 'application/json' };
 
-    const requestBody = {
-        contents: [{
-            role: 'user',
-            parts: [{ text: prompt }]
-        }],
-        generationConfig: {
-            temperature: 0.8,
-            maxOutputTokens: 8000
-        }
-    };
-
-    // 백엔드 사용 시 모델 명시
-    if (useBackend) {
-        requestBody.model = 'gemini-2.0-flash';
+    if (!useBackend) {
+        headers['x-api-key'] = claudeApiKey;
+        headers['anthropic-version'] = '2023-06-01';
     }
+
+    const requestBody = {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8000,
+        messages: [{
+            role: 'user',
+            content: prompt
+        }]
+    };
 
     const response = await fetchWithTimeout(url, {
         method: 'POST',
-        headers: headers,
+        headers,
         body: JSON.stringify(requestBody)
     }, 120000);
 
@@ -342,11 +339,11 @@ export async function callGeminiForPlan(prompt, config) {
         if (response.status === 401 || response.status === 403) throw new Error('API 키가 유효하지 않습니다.');
         if (response.status === 429) throw new Error('요청 한도 초과. 잠시 후 다시 시도해주세요.');
         if (response.status === 504) throw new Error('서버 타임아웃. 잠시 후 다시 시도해주세요.');
-        throw new Error(errorData.error?.message || '알 수 없는 오류');
+        throw new Error(errorData.error?.message || errorData.error || '알 수 없는 오류');
     }
 
     const data = await response.json();
-    return data.candidates[0].content.parts[0].text;
+    return data.content[0].text;
 }
 
 // ===== 제품 이미지 분석 (Gemini Vision) =====
