@@ -332,7 +332,7 @@ export async function callClaudeForPlan(prompt, config) {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody)
-    }, 120000);
+    }, 180000);
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -340,6 +340,36 @@ export async function callClaudeForPlan(prompt, config) {
         if (response.status === 429) throw new Error('요청 한도 초과. 잠시 후 다시 시도해주세요.');
         if (response.status === 504) throw new Error('서버 타임아웃. 잠시 후 다시 시도해주세요.');
         throw new Error(errorData.error?.message || errorData.error || '알 수 없는 오류');
+    }
+
+    // 백엔드가 SSE 스트림을 반환하므로 파싱하여 텍스트 추출
+    if (useBackend) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const jsonStr = line.slice(6).trim();
+                if (jsonStr === '[DONE]' || !jsonStr) continue;
+
+                try {
+                    const event = JSON.parse(jsonStr);
+                    if (event.type === 'content_block_delta' && event.delta?.text) {
+                        fullText += event.delta.text;
+                    }
+                } catch {}
+            }
+        }
+
+        return fullText;
     }
 
     const data = await response.json();
